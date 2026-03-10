@@ -1,17 +1,22 @@
 {
-  "org": "laris-co",
-  "projectNumber": 6,
+  "org": "your-org",
+  "projectNumber": 1,
   "oracleRepos": {
     "pulse": "pulse-oracle",
-    "hermes": "hermes-oracle",
-    "neo": "neo-oracle",
-    "nexus": "nexus-oracle",
-    "volt": "volt-oracle",
-    "odin": "odin-oracle",
-    "homekeeper": "homelab",
-    "dustboy": "DustBoy-Oracle",
-    "floodboy": "floodboy-oracle",
-    "fireman": "fireman-oracle",
-    "calliope": "calliope-oracle"
+    "neo": "neo-oracle"
+  },
+  "routing": {
+    "label": [
+      { "match": ["oracle/neo"], "oracle": "Neo" }
+    ],
+    "repo": {
+      "neo-oracle": "Neo",
+      "pulse-oracle": "Pulse"
+    },
+    "keyword": [
+      { "match": ["code", "bug", "feature"], "oracle": "Neo" },
+      { "match": ["blog", "publish"], "oracle": "Calliope" }
+    ],
+    "default": "Pulse"
   }
 }

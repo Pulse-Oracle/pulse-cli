@@ -5,4 +5,5 @@ export { set } from "./set";
 export { fieldAdd } from "./field-add";
 export { clearDate } from "./clear";
 export { scan } from "./scan";
+export { autoAssign } from "./auto-assign";
 export { init } from "./init";

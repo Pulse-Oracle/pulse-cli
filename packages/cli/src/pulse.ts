@@ -4,7 +4,7 @@
  * Pulse Oracle
  */
 
-import { board, timeline, add, set, fieldAdd, clearDate, scan, init } from "./commands/index";
+import { board, timeline, add, set, fieldAdd, clearDate, scan, autoAssign, init } from "./commands/index";
 
 const [cmd, ...args] = process.argv.slice(2);
 
@@ -61,7 +61,21 @@ switch (cmd) {
     await clearDate(parseInt(args[0]), (args[1] as "start" | "target" | "both") || "both");
     break;
   case "scan":
-    await scan();
+    if (args.includes("--auto")) {
+      await autoAssign({
+        dryRun: args.includes("--dry-run"),
+        notify: args.includes("--notify"),
+      });
+    } else {
+      await scan();
+    }
+    break;
+  case "auto-assign":
+  case "aa":
+    await autoAssign({
+      dryRun: args.includes("--dry-run"),
+      notify: args.includes("--notify"),
+    });
     break;
   case "init":
     await init();
@@ -78,6 +92,8 @@ switch (cmd) {
     field-add, fa <f> <v> Add option to field (preserves existing values!)
     clear, c <#> [field]  Clear dates (start|target|both)
     scan                  Discover untracked issues across all repos
+    scan --auto           Auto-assign untracked issues to Oracles
+    auto-assign, aa       Same as scan --auto (--dry-run, --notify)
     init                  Initialize pulse.config.json (org, project, repos)
 
   Options for add:

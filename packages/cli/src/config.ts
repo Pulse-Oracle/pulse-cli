@@ -1,10 +1,13 @@
 import { join } from "path";
 import type { PulseContext } from "@pulse-oracle/sdk";
 
+import type { RoutingConfig } from "@pulse-oracle/sdk";
+
 export interface PulseConfig {
   org: string;
   projectNumber: number;
   oracleRepos: Record<string, string>;
+  routing?: RoutingConfig;
 }
 
 const CONFIG_FILE = "pulse.config.json";
