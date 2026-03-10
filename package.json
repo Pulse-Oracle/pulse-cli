@@ -1,5 +1,5 @@
 {
-  "name": "pulse-board",
+  "name": "pulse-oracle",
   "version": "1.0.0",
   "description": "GH Projects Master Board CLI — manage issues, timelines, and boards from the terminal",
   "bin": {
