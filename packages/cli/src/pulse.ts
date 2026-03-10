@@ -66,6 +66,8 @@ switch (cmd) {
         dryRun: args.includes("--dry-run"),
         notify: args.includes("--notify"),
       });
+    } else if (args.includes("--mine")) {
+      await scan({ mine: true });
     } else {
       await scan();
     }
@@ -92,6 +94,7 @@ switch (cmd) {
     field-add, fa <f> <v> Add option to field (preserves existing values!)
     clear, c <#> [field]  Clear dates (start|target|both)
     scan                  Discover untracked issues across all repos
+    scan --mine           Today's commits across oracle family repos
     scan --auto           Auto-assign untracked issues to Oracles
     auto-assign, aa       Same as scan --auto (--dry-run, --notify)
     init                  Initialize pulse.config.json (org, project, repos)

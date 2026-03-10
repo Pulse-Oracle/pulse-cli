@@ -3,11 +3,18 @@ import type { PulseContext } from "@pulse-oracle/sdk";
 
 import type { RoutingConfig } from "@pulse-oracle/sdk";
 
+export interface PulsePeer {
+  org: string;
+  projectNumber: number;
+  label?: string;
+}
+
 export interface PulseConfig {
   org: string;
   projectNumber: number;
   oracleRepos: Record<string, string>;
   routing?: RoutingConfig;
+  peers?: PulsePeer[];
 }
 
 const CONFIG_FILE = "pulse.config.json";
@@ -52,4 +59,14 @@ export function getContext(): PulseContext {
 /** Oracle name (lowercase) → repo name in org (from config) */
 export function getOracleRepos(): Record<string, string> {
   return loadConfig().oracleRepos;
+}
+
+/** Get all contexts: primary + peers */
+export function getAllContexts(): { ctx: PulseContext; label: string }[] {
+  const cfg = loadConfig();
+  const all = [{ ctx: { org: cfg.org, projectNumber: cfg.projectNumber }, label: cfg.org }];
+  for (const peer of cfg.peers || []) {
+    all.push({ ctx: { org: peer.org, projectNumber: peer.projectNumber }, label: peer.label || peer.org });
+  }
+  return all;
 }
