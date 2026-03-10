@@ -72,12 +72,11 @@ interface RepoActivity {
 
 interface ScanCache {
   date: string; // YYYY-MM-DD
-  timestamp: number;
+  timestamp: number; // last fetch time (ms)
   activities: RepoActivity[];
 }
 
 const CACHE_DIR = join(process.env.HOME || "~", ".cache", "pulse");
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function cacheFile(): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -86,20 +85,21 @@ function cacheFile(): string {
 
 function readCache(): ScanCache | null {
   try {
+    // Clear require cache so re-reads work within same process
+    delete require.cache[cacheFile()];
     const raw = require(cacheFile());
     const cache = raw as ScanCache;
     const today = new Date().toISOString().slice(0, 10);
     if (cache.date !== today) return null;
-    if (Date.now() - cache.timestamp > CACHE_TTL) return null;
     return cache;
   } catch {
     return null;
   }
 }
 
-function writeCache(activities: RepoActivity[]): void {
+function writeCache(activities: RepoActivity[], timestamp?: number): void {
   const today = new Date().toISOString().slice(0, 10);
-  const cache: ScanCache = { date: today, timestamp: Date.now(), activities };
+  const cache: ScanCache = { date: today, timestamp: timestamp || Date.now(), activities };
   try {
     Bun.spawnSync(["mkdir", "-p", CACHE_DIR]);
     Bun.write(cacheFile(), JSON.stringify(cache));
@@ -108,22 +108,62 @@ function writeCache(activities: RepoActivity[]): void {
   }
 }
 
-async function fetchActivities(allContexts: { ctx: { org: string; projectNumber: number }; label: string }[], repoToOracle: Map<string, string>, sinceISO: string) {
+/** Merge new activities into cached ones, deduplicating by sha */
+function mergeActivities(cached: RepoActivity[], fresh: RepoActivity[]): RepoActivity[] {
+  const merged = new Map<string, RepoActivity>();
+
+  // Start with cached
+  for (const act of cached) {
+    merged.set(act.repo, { ...act, commits: [...act.commits] });
+  }
+
+  // Merge fresh commits in
+  for (const act of fresh) {
+    const existing = merged.get(act.repo);
+    if (existing) {
+      const seenShas = new Set(existing.commits.map(c => c.sha));
+      for (const c of act.commits) {
+        if (!seenShas.has(c.sha)) {
+          existing.commits.unshift(c); // new commits go first
+        }
+      }
+    } else {
+      merged.set(act.repo, { ...act, commits: [...act.commits] });
+    }
+  }
+
+  return [...merged.values()];
+}
+
+async function fetchActivities(
+  allContexts: { ctx: { org: string; projectNumber: number }; label: string }[],
+  repoToOracle: Map<string, string>,
+  sinceISO: string,
+  /** Only fetch repos updated after this timestamp (for incremental) */
+  updatedAfter?: string
+) {
   const activities: RepoActivity[] = [];
   let totalRepos = 0;
+  let fetchedRepos = 0;
   const orgLabels: string[] = [];
 
   for (const { ctx, label } of allContexts) {
-    let repos: { name: string; isArchived: boolean }[];
+    let repos: { name: string; isArchived: boolean; pushedAt: string }[];
     try {
-      const reposJson = await gh("repo", "list", ctx.org, "--json", "name,isArchived", "--limit", "100");
+      const reposJson = await gh("repo", "list", ctx.org, "--json", "name,isArchived,pushedAt", "--limit", "100");
       repos = JSON.parse(reposJson);
     } catch {
       continue;
     }
-    const activeRepos = repos.filter(r => !r.isArchived);
+    let activeRepos = repos.filter(r => !r.isArchived);
     totalRepos += activeRepos.length;
-    orgLabels.push(`${label} (${activeRepos.length})`);
+
+    // Skip repos not pushed since last cache
+    if (updatedAfter) {
+      activeRepos = activeRepos.filter(r => r.pushedAt > updatedAfter);
+    }
+    fetchedRepos += activeRepos.length;
+    orgLabels.push(`${label} (${activeRepos.length}/${repos.filter(r => !r.isArchived).length})`);
 
     // Fetch commits in parallel (batches of 10)
     const batch = 10;
@@ -150,7 +190,7 @@ async function fetchActivities(allContexts: { ctx: { org: string; projectNumber:
     }
   }
 
-  return { activities, totalRepos, orgLabels };
+  return { activities, totalRepos, fetchedRepos, orgLabels };
 }
 
 async function scanMine(noCache?: boolean) {
@@ -167,32 +207,36 @@ async function scanMine(noCache?: boolean) {
     repoToOracle.set(repo.toLowerCase(), oracle);
   }
 
-  // Try cache first
+  // Incremental cache: read cached commits, fetch only delta since last cache
   const cached = noCache ? null : readCache();
   let activities: RepoActivity[];
-  let totalRepos: number;
-  let orgLabels: string[];
-  let fromCache = false;
+  let fetchInfo: string;
 
   if (cached) {
-    activities = cached.activities;
-    totalRepos = 0; // Not stored in cache
-    orgLabels = [];
-    fromCache = true;
+    // Incremental: only check repos pushed since last cache
+    const updatedAfter = new Date(cached.timestamp).toISOString();
+    const delta = await fetchActivities(allContexts, repoToOracle, sinceISO, updatedAfter);
+    const newCommits = delta.activities.reduce((sum, a) => sum + a.commits.length, 0);
+
+    if (newCommits > 0) {
+      activities = mergeActivities(cached.activities, delta.activities);
+      writeCache(activities);
+      fetchInfo = `+${newCommits} new (checked ${delta.fetchedRepos} updated repos)`;
+    } else {
+      activities = cached.activities;
+      const age = Math.round((Date.now() - cached.timestamp) / 1000);
+      fetchInfo = `${age}s ago, ${delta.fetchedRepos} repos checked, no new`;
+    }
   } else {
+    // Full fetch from midnight
     const result = await fetchActivities(allContexts, repoToOracle, sinceISO);
     activities = result.activities;
-    totalRepos = result.totalRepos;
-    orgLabels = result.orgLabels;
     writeCache(activities);
+    fetchInfo = `${result.totalRepos} repos across ${result.orgLabels.join(" + ")}`;
   }
 
   let totalCommits = activities.reduce((sum, a) => sum + a.commits.length, 0);
-
-  const header = fromCache
-    ? `Pulse — Oracle Family Scan  (cached, today)`
-    : `Pulse — Oracle Family Scan  (${totalRepos} repos across ${orgLabels.join(" + ")}, today)`;
-  console.log(`\n  ${header}\n`);
+  console.log(`\n  Pulse — Oracle Family Scan  (${fetchInfo}, today)\n`);
 
   if (activities.length === 0) {
     console.log("  No commits found today across the oracle family.\n");
@@ -220,10 +264,6 @@ async function scanMine(noCache?: boolean) {
   console.log(`  ${totalCommits} commits across ${activities.length} repos (${allContexts.length} org${allContexts.length > 1 ? "s" : ""})`);
   if (oracleSet.size > 0) {
     console.log(`  Active oracles: ${[...oracleSet].join(", ")}`);
-  }
-  if (fromCache) {
-    const age = Math.round((Date.now() - cached!.timestamp) / 1000);
-    console.log(`  (cached ${age}s ago — run with --no-cache to refresh)`);
   }
   console.log();
 }
