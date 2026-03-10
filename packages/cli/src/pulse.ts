@@ -67,7 +67,7 @@ switch (cmd) {
         notify: args.includes("--notify"),
       });
     } else if (args.includes("--mine")) {
-      await scan({ mine: true });
+      await scan({ mine: true, noCache: args.includes("--no-cache") });
     } else {
       await scan();
     }

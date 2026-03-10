@@ -1,9 +1,10 @@
+import { join } from "path";
 import { gh, getItems } from "@pulse-oracle/sdk";
 import { getContext, loadConfig, getAllContexts } from "../config";
 
-export async function scan(opts: { mine?: boolean } = {}) {
+export async function scan(opts: { mine?: boolean; noCache?: boolean } = {}) {
   if (opts.mine) {
-    await scanMine();
+    await scanMine(opts.noCache);
     return;
   }
 
@@ -69,7 +70,90 @@ interface RepoActivity {
   commits: Commit[];
 }
 
-async function scanMine() {
+interface ScanCache {
+  date: string; // YYYY-MM-DD
+  timestamp: number;
+  activities: RepoActivity[];
+}
+
+const CACHE_DIR = join(process.env.HOME || "~", ".cache", "pulse");
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function cacheFile(): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return join(CACHE_DIR, `scan-mine-${today}.json`);
+}
+
+function readCache(): ScanCache | null {
+  try {
+    const raw = require(cacheFile());
+    const cache = raw as ScanCache;
+    const today = new Date().toISOString().slice(0, 10);
+    if (cache.date !== today) return null;
+    if (Date.now() - cache.timestamp > CACHE_TTL) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(activities: RepoActivity[]): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const cache: ScanCache = { date: today, timestamp: Date.now(), activities };
+  try {
+    Bun.spawnSync(["mkdir", "-p", CACHE_DIR]);
+    Bun.write(cacheFile(), JSON.stringify(cache));
+  } catch {
+    // Cache write is best-effort
+  }
+}
+
+async function fetchActivities(allContexts: { ctx: { org: string; projectNumber: number }; label: string }[], repoToOracle: Map<string, string>, sinceISO: string) {
+  const activities: RepoActivity[] = [];
+  let totalRepos = 0;
+  const orgLabels: string[] = [];
+
+  for (const { ctx, label } of allContexts) {
+    let repos: { name: string; isArchived: boolean }[];
+    try {
+      const reposJson = await gh("repo", "list", ctx.org, "--json", "name,isArchived", "--limit", "100");
+      repos = JSON.parse(reposJson);
+    } catch {
+      continue;
+    }
+    const activeRepos = repos.filter(r => !r.isArchived);
+    totalRepos += activeRepos.length;
+    orgLabels.push(`${label} (${activeRepos.length})`);
+
+    // Fetch commits in parallel (batches of 10)
+    const batch = 10;
+    for (let i = 0; i < activeRepos.length; i += batch) {
+      const chunk = activeRepos.slice(i, i + batch);
+      const results = await Promise.allSettled(
+        chunk.map(async (repo) => {
+          const commitsJson = await gh(
+            "api", `repos/${ctx.org}/${repo.name}/commits?since=${sinceISO}&per_page=50`,
+            "--jq", `[.[] | {sha: .sha[0:7], message: (.commit.message | split("\n")[0]), author: (.commit.author.name // .author.login // "unknown"), date: .commit.author.date}]`
+          );
+          if (!commitsJson.trim() || commitsJson.trim() === "[]") return null;
+          const commits: Commit[] = JSON.parse(commitsJson);
+          if (commits.length === 0) return null;
+          const oracle = repoToOracle.get(repo.name.toLowerCase()) || "-";
+          return { repo: `${ctx.org}/${repo.name}`, oracle, commits } as RepoActivity;
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) {
+          activities.push(r.value);
+        }
+      }
+    }
+  }
+
+  return { activities, totalRepos, orgLabels };
+}
+
+async function scanMine(noCache?: boolean) {
   const config = loadConfig();
   const allContexts = getAllContexts();
   const today = new Date();
@@ -83,47 +167,32 @@ async function scanMine() {
     repoToOracle.set(repo.toLowerCase(), oracle);
   }
 
-  const activities: RepoActivity[] = [];
-  let totalCommits = 0;
-  let totalRepos = 0;
-  const orgLabels: string[] = [];
+  // Try cache first
+  const cached = noCache ? null : readCache();
+  let activities: RepoActivity[];
+  let totalRepos: number;
+  let orgLabels: string[];
+  let fromCache = false;
 
-  for (const { ctx, label } of allContexts) {
-    // Get all repos in this org
-    let repos: { name: string; isArchived: boolean }[];
-    try {
-      const reposJson = await gh("repo", "list", ctx.org, "--json", "name,isArchived", "--limit", "100");
-      repos = JSON.parse(reposJson);
-    } catch {
-      continue;
-    }
-    const activeRepos = repos.filter(r => !r.isArchived);
-    totalRepos += activeRepos.length;
-    orgLabels.push(`${label} (${activeRepos.length})`);
-
-    for (const repo of activeRepos) {
-      try {
-        const commitsJson = await gh(
-          "api", `repos/${ctx.org}/${repo.name}/commits?since=${sinceISO}&per_page=50`,
-          "--jq", `[.[] | {sha: .sha[0:7], message: (.commit.message | split("\n")[0]), author: (.commit.author.name // .author.login // "unknown"), date: .commit.author.date}]`
-        );
-
-        if (!commitsJson.trim() || commitsJson.trim() === "[]") continue;
-
-        const commits: Commit[] = JSON.parse(commitsJson);
-
-        if (commits.length > 0) {
-          const oracle = repoToOracle.get(repo.name.toLowerCase()) || "-";
-          activities.push({ repo: `${ctx.org}/${repo.name}`, oracle, commits });
-          totalCommits += commits.length;
-        }
-      } catch {
-        // Skip repos we can't access
-      }
-    }
+  if (cached) {
+    activities = cached.activities;
+    totalRepos = 0; // Not stored in cache
+    orgLabels = [];
+    fromCache = true;
+  } else {
+    const result = await fetchActivities(allContexts, repoToOracle, sinceISO);
+    activities = result.activities;
+    totalRepos = result.totalRepos;
+    orgLabels = result.orgLabels;
+    writeCache(activities);
   }
 
-  console.log(`\n  Pulse — Oracle Family Scan  (${totalRepos} repos across ${orgLabels.join(" + ")}, today)\n`);
+  let totalCommits = activities.reduce((sum, a) => sum + a.commits.length, 0);
+
+  const header = fromCache
+    ? `Pulse — Oracle Family Scan  (cached, today)`
+    : `Pulse — Oracle Family Scan  (${totalRepos} repos across ${orgLabels.join(" + ")}, today)`;
+  console.log(`\n  ${header}\n`);
 
   if (activities.length === 0) {
     console.log("  No commits found today across the oracle family.\n");
@@ -151,6 +220,10 @@ async function scanMine() {
   console.log(`  ${totalCommits} commits across ${activities.length} repos (${allContexts.length} org${allContexts.length > 1 ? "s" : ""})`);
   if (oracleSet.size > 0) {
     console.log(`  Active oracles: ${[...oracleSet].join(", ")}`);
+  }
+  if (fromCache) {
+    const age = Math.round((Date.now() - cached!.timestamp) / 1000);
+    console.log(`  (cached ${age}s ago — run with --no-cache to refresh)`);
   }
   console.log();
 }
