@@ -4,7 +4,7 @@
  * Pulse Oracle
  */
 
-import { board, timeline, add, set, fieldAdd, clearDate, scan, init } from "./lib/commands/index";
+import { board, timeline, add, set, fieldAdd, clearDate, scan, init } from "./commands/index";
 
 const [cmd, ...args] = process.argv.slice(2);
 

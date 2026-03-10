@@ -1,22 +1,23 @@
-import { getOrg, gh, getItems } from "../github";
+import { gh, getItems } from "@pulse-oracle/sdk";
+import { getContext } from "../config";
 
 export async function scan() {
-  const org = getOrg();
-  const reposJson = await gh("repo", "list", org, "--json", "name,url,isArchived,updatedAt", "--limit", "100");
+  const ctx = getContext();
+  const reposJson = await gh("repo", "list", ctx.org, "--json", "name,url,isArchived,updatedAt", "--limit", "100");
   const repos: { name: string; url: string; isArchived: boolean; updatedAt: string }[] = JSON.parse(reposJson);
   const activeRepos = repos.filter(r => !r.isArchived);
 
-  const items = await getItems();
+  const items = await getItems(ctx);
   const boardTitles = items.map(i => i.title.toLowerCase());
 
-  console.log(`\n  Pulse — Scan  (${activeRepos.length} active repos in ${org})\n`);
+  console.log(`\n  Pulse — Scan  (${activeRepos.length} active repos in ${ctx.org})\n`);
 
   const untracked: { repo: string; title: string; url: string }[] = [];
 
   for (const repo of activeRepos) {
     try {
       const issuesJson = await gh(
-        "issue", "list", "--repo", `${org}/${repo.name}`,
+        "issue", "list", "--repo", `${ctx.org}/${repo.name}`,
         "--state", "open", "--json", "title,url", "--limit", "50"
       );
       const issues: { title: string; url: string }[] = JSON.parse(issuesJson);

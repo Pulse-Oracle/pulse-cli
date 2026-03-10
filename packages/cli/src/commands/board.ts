@@ -1,9 +1,8 @@
-import { fmtBoardDates } from "../format";
-import { filterItems, groupByPriority } from "../filter";
-import { getItems } from "../github";
+import { fmtBoardDates, filterItems, groupByPriority, getItems } from "@pulse-oracle/sdk";
+import { getContext } from "../config";
 
 export async function board(filter?: string) {
-  let items = await getItems();
+  let items = await getItems(getContext());
   if (filter) items = filterItems(items, filter);
 
   const groups = groupByPriority(items);

@@ -1,13 +1,4 @@
-import type { ProjectItem, ProjectField } from "./types";
-import { loadConfig } from "./config";
-
-export function getOrg(): string {
-  return loadConfig().org;
-}
-
-export function getProjectNumber(): number {
-  return loadConfig().projectNumber;
-}
+import type { PulseContext, ProjectItem, ProjectField } from "./types";
 
 // ─── Low-level helpers ───────────────────────────────
 
@@ -35,14 +26,14 @@ export async function graphql<T = any>(query: string): Promise<T> {
 
 // ─── Data fetchers ───────────────────────────────────
 
-export async function getItems(): Promise<ProjectItem[]> {
+export async function getItems(ctx: PulseContext): Promise<ProjectItem[]> {
   const data = await ghJson(
-    "project", "item-list", String(getProjectNumber()), "--owner", getOrg(), "--format", "json"
+    "project", "item-list", String(ctx.projectNumber), "--owner", ctx.org, "--format", "json"
   );
   const items: ProjectItem[] = data.items;
 
   const projectData = await ghJson(
-    "project", "view", String(getProjectNumber()), "--owner", getOrg(), "--format", "json"
+    "project", "view", String(ctx.projectNumber), "--owner", ctx.org, "--format", "json"
   );
 
   const gqlResult = await graphql(`{
@@ -82,23 +73,23 @@ export async function getItems(): Promise<ProjectItem[]> {
   return items;
 }
 
-export async function getFields(): Promise<ProjectField[]> {
+export async function getFields(ctx: PulseContext): Promise<ProjectField[]> {
   const data = await ghJson(
-    "project", "field-list", String(getProjectNumber()), "--owner", getOrg(), "--format", "json"
+    "project", "field-list", String(ctx.projectNumber), "--owner", ctx.org, "--format", "json"
   );
   return data.fields;
 }
 
-export async function getProjectId(): Promise<string> {
+export async function getProjectId(ctx: PulseContext): Promise<string> {
   const data = await ghJson(
-    "project", "view", String(getProjectNumber()), "--owner", getOrg(), "--format", "json"
+    "project", "view", String(ctx.projectNumber), "--owner", ctx.org, "--format", "json"
   );
   return data.id;
 }
 
-export async function getIssueTypes(): Promise<{ id: string; name: string }[]> {
+export async function getIssueTypes(ctx: PulseContext): Promise<{ id: string; name: string }[]> {
   const result = await graphql(`{
-    organization(login: "${getOrg()}") {
+    organization(login: "${ctx.org}") {
       issueTypes(first: 20) {
         nodes { id name }
       }

@@ -1,4 +1,5 @@
 import { join } from "path";
+import type { PulseContext } from "@pulse-oracle/sdk";
 
 export interface PulseConfig {
   org: string;
@@ -37,4 +38,15 @@ export function saveConfig(config: PulseConfig): void {
 /** Reset cached config (for testing) */
 export function _resetCache(): void {
   _cached = null;
+}
+
+/** Get PulseContext from config for SDK functions */
+export function getContext(): PulseContext {
+  const cfg = loadConfig();
+  return { org: cfg.org, projectNumber: cfg.projectNumber };
+}
+
+/** Oracle name (lowercase) → repo name in org (from config) */
+export function getOracleRepos(): Record<string, string> {
+  return loadConfig().oracleRepos;
 }

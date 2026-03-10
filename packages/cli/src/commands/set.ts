@@ -1,9 +1,11 @@
-import { gh, getItems, getFields, getProjectId } from "../github";
+import { gh, getItems, getFields, getProjectId } from "@pulse-oracle/sdk";
+import { getContext } from "../config";
 
 export async function set(itemIndex: number, ...fieldValues: string[]) {
-  const items = await getItems();
-  const fields = await getFields();
-  const projectId = await getProjectId();
+  const ctx = getContext();
+  const items = await getItems(ctx);
+  const fields = await getFields(ctx);
+  const projectId = await getProjectId(ctx);
 
   if (itemIndex < 1 || itemIndex > items.length) {
     console.error(`Item index ${itemIndex} out of range (1-${items.length})`);

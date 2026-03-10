@@ -1,18 +1,14 @@
 {
-  "name": "pulse-oracle-cli",
-  "version": "1.0.0",
-  "description": "GH Projects Master Board CLI — manage issues, timelines, and boards from the terminal",
-  "bin": {
-    "pulse": "pulse.ts"
-  },
+  "name": "pulse-oracle",
+  "private": true,
+  "workspaces": ["packages/*"],
   "scripts": {
-    "pulse": "bun pulse.ts",
-    "test": "bun test tests/"
+    "test": "bun test",
+    "pulse": "bun packages/cli/src/pulse.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
   },
-  "keywords": ["github", "projects", "cli", "board", "timeline", "issues"],
   "repository": {
     "type": "git",
     "url": "https://github.com/Pulse-Oracle/pulse-cli"

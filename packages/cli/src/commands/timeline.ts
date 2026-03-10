@@ -1,9 +1,8 @@
-import { fmtDateRange, priorityColor, calcBar } from "../format";
-import { filterItems } from "../filter";
-import { getItems } from "../github";
+import { fmtDateRange, priorityColor, calcBar, filterItems, getItems } from "@pulse-oracle/sdk";
+import { getContext } from "../config";
 
 export async function timeline(filter?: string) {
-  let items = await getItems();
+  let items = await getItems(getContext());
   if (filter) items = filterItems(items, filter);
 
   const dated = items

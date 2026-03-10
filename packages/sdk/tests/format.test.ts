@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fmtDate, fmtDateRange, fmtBoardDates, priorityColor, calcBar } from "../lib/format";
+import { fmtDate, fmtDateRange, fmtBoardDates, priorityColor, calcBar } from "../src/format";
 
 describe("fmtDate", () => {
   test("formats date as day + month name", () => {
