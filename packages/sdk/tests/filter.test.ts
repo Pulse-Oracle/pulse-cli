@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { filterItems, groupByPriority } from "../lib/filter";
-import type { ProjectItem } from "../lib/types";
+import { filterItems, groupByPriority } from "../src/filter";
+import type { ProjectItem } from "../src/types";
 
 const mockItems: ProjectItem[] = [
   { id: "1", title: "Bitkub Training", status: "Todo", priority: "P0", client: "Bitkub", oracle: "Hermes", "start date": "", "target date": "" },

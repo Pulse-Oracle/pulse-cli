@@ -1,14 +1,14 @@
-import { getOracleRepos } from "../types";
-import { getProjectNumber, getOrg, gh, getIssueTypes, setIssueType } from "../github";
+import { gh, getIssueTypes, setIssueType } from "@pulse-oracle/sdk";
+import { getContext, getOracleRepos } from "../config";
 
 export async function add(title: string, opts: { body?: string; oracle?: string; repo?: string; type?: string } = {}) {
-  const org = getOrg();
+  const ctx = getContext();
   let targetRepo = opts.repo;
   if (!targetRepo && opts.oracle) {
     const repoName = getOracleRepos()[opts.oracle.toLowerCase()];
-    if (repoName) targetRepo = `${org}/${repoName}`;
+    if (repoName) targetRepo = `${ctx.org}/${repoName}`;
   }
-  if (!targetRepo) targetRepo = `${org}/pulse-oracle`;
+  if (!targetRepo) targetRepo = `${ctx.org}/pulse-oracle`;
 
   // Ensure oracle label exists on target repo
   if (opts.oracle) {
@@ -29,7 +29,7 @@ export async function add(title: string, opts: { body?: string; oracle?: string;
 
   // Set issue type if specified
   if (opts.type) {
-    const types = await getIssueTypes();
+    const types = await getIssueTypes(ctx);
     const match = types.find(t => t.name.toLowerCase() === opts.type!.toLowerCase());
     if (match) {
       const issueJson = await gh("issue", "view", issueUrl.trim(), "--json", "id");
@@ -41,6 +41,6 @@ export async function add(title: string, opts: { body?: string; oracle?: string;
     }
   }
 
-  await gh("project", "item-add", String(getProjectNumber()), "--owner", org, "--url", issueUrl.trim());
+  await gh("project", "item-add", String(ctx.projectNumber), "--owner", ctx.org, "--url", issueUrl.trim());
   console.log(`Added to Master Board: "${title}"`);
 }

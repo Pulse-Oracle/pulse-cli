@@ -1,7 +1,9 @@
-import { getProjectNumber, getOrg, gh, graphql, getItems, getFields, getProjectId } from "../github";
+import { gh, graphql, getItems, getFields, getProjectId } from "@pulse-oracle/sdk";
+import { getContext } from "../config";
 
 export async function fieldAdd(fieldName: string, newOption: string) {
-  const fields = await getFields();
+  const ctx = getContext();
+  const fields = await getFields(ctx);
   const field = fields.find(
     (f) => f.name.toLowerCase() === fieldName.toLowerCase() && f.type === "ProjectV2SingleSelectField"
   );
@@ -18,7 +20,7 @@ export async function fieldAdd(fieldName: string, newOption: string) {
     return;
   }
 
-  const items = await getItems();
+  const items = await getItems(ctx);
   const currentValues: { id: string; value: string }[] = [];
   const fieldKey = fieldName.toLowerCase();
   for (const item of items) {
@@ -31,13 +33,13 @@ export async function fieldAdd(fieldName: string, newOption: string) {
   await graphql(`mutation { deleteProjectV2Field(input: { fieldId: "${field.id}" }) { projectV2Field { ... on ProjectV2SingleSelectField { name } } } }`);
 
   const allOptions = [...existing, newOption].join(",");
-  await gh("project", "field-create", String(getProjectNumber()), "--owner", getOrg(),
+  await gh("project", "field-create", String(ctx.projectNumber), "--owner", ctx.org,
     "--name", fieldName, "--data-type", "SINGLE_SELECT", "--single-select-options", allOptions);
 
-  const newFields = await getFields();
+  const newFields = await getFields(ctx);
   const newField = newFields.find((f) => f.name.toLowerCase() === fieldName.toLowerCase())!;
 
-  const projectId = await getProjectId();
+  const projectId = await getProjectId(ctx);
   let restored = 0;
   for (const { id, value } of currentValues) {
     const opt = newField.options!.find((o) => o.name === value);

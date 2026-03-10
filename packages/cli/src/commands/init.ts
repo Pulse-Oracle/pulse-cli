@@ -1,6 +1,6 @@
 import { saveConfig } from "../config";
 import type { PulseConfig } from "../config";
-import { gh } from "../github";
+import { gh } from "@pulse-oracle/sdk";
 import * as readline from "readline";
 
 function ask(rl: readline.Interface, question: string): Promise<string> {
