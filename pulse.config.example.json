@@ -1,0 +1,17 @@
+{
+  "org": "laris-co",
+  "projectNumber": 6,
+  "oracleRepos": {
+    "pulse": "pulse-oracle",
+    "hermes": "hermes-oracle",
+    "neo": "neo-oracle",
+    "nexus": "nexus-oracle",
+    "volt": "volt-oracle",
+    "odin": "odin-oracle",
+    "homekeeper": "homelab",
+    "dustboy": "DustBoy-Oracle",
+    "floodboy": "floodboy-oracle",
+    "fireman": "fireman-oracle",
+    "calliope": "calliope-oracle"
+  }
+}

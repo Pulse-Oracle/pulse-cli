@@ -1,0 +1,13 @@
+{
+  "name": "pulse-cli",
+  "version": "1.0.0",
+  "description": "GH Projects Master Board CLI — manage issues, timelines, and boards from the terminal",
+  "scripts": {
+    "pulse": "bun pulse.ts",
+    "test": "bun test tests/"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "license": "MIT"
+}
