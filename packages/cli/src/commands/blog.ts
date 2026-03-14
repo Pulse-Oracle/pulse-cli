@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { basename } from "path";
 import { createDiscussion } from "@pulse-oracle/sdk";
 import type { BlogOpts } from "@pulse-oracle/sdk";
-import { getContext, getRepoName } from "../config";
+import { getContext, getRepoName, loadConfig } from "../config";
 
 export async function blog(file: string, opts: BlogOpts = {}) {
   const ctx = getContext();
@@ -33,7 +33,9 @@ export async function blog(file: string, opts: BlogOpts = {}) {
   const now = new Date();
   const timestamp = now.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
 
+  const cfg = loadConfig();
   const org = ctx.org;
+  const blogRepo = cfg.blog?.repo || getRepoName();
   const repo = getRepoName();
   const repoPath = file.replace(new RegExp(`.*${repo}/`), "");
   const encodedPath = repoPath.replace(/ψ/g, "%CF%88");
@@ -64,9 +66,9 @@ export async function blog(file: string, opts: BlogOpts = {}) {
 
   const fullBody = bodyContent + "\n" + provenance;
 
-  const category = opts.category || "Show and tell";
-  console.log(`Publishing: "${title}" → ${category}`);
-  const discussion = await createDiscussion(org, repo, title, fullBody, category);
+  const category = opts.category || cfg.blog?.category || "Show and tell";
+  console.log(`Publishing: "${title}" → ${org}/${blogRepo} [${category}]`);
+  const discussion = await createDiscussion(org, blogRepo, title, fullBody, category);
   console.log(`  Discussion: ${discussion.url}`);
 
   const hasFrontmatter = content.startsWith("---");

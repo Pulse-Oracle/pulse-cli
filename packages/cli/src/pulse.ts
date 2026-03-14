@@ -170,7 +170,7 @@ switch (cmd) {
   }
   case "cleanup":
   case "gc":
-    await cleanup();
+    await cleanup({ dry: args.includes("--dry") });
     break;
   default:
     console.log(`
@@ -199,7 +199,7 @@ switch (cmd) {
     backfill-wt, bwt      Scan disk worktrees + match to board items [--dry]
     start, go <title>     Create issue + set In Progress (track before coding!)
     blog <file.md>        Publish markdown to Discussion (with provenance)
-    cleanup, gc           Remove stale/orphan worktrees (skips dirty)
+    cleanup, gc [--dry]   Remove stale/orphan worktrees (skips dirty/unpushed)
 
   Options for add:
     --oracle <name>       Auto-resolve repo + add oracle label

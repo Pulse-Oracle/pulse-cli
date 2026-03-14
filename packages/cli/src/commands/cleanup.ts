@@ -4,17 +4,19 @@ import { scanWorktrees, extractSlug, type Worktree } from "../worktree";
 import { mawPeek } from "../maw";
 
 const STALE_DAYS = 7;
+const ORPHAN_DAYS = 3; // don't flag as orphan until at least 3 days old
 
-interface CleanupCandidate {
+export interface CleanupCandidate {
   worktree: Worktree;
   slug: string;
   reason: string;
   boardMatch: string | null;
   boardStatus: string | null;
+  unpushed: boolean;
 }
 
-function daysAgo(date: Date): number {
-  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+export function daysAgo(date: Date, now: number = Date.now()): number {
+  return Math.floor((now - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function formatAge(date: Date): string {
@@ -24,7 +26,23 @@ function formatAge(date: Date): string {
   return `${d} days ago`;
 }
 
-export async function cleanup() {
+/** Check if branch has commits not pushed to its upstream */
+export function hasUnpushedCommits(repoPath: string): boolean {
+  const result = Bun.spawnSync(
+    ["git", "-C", repoPath, "log", "@{u}..HEAD", "--oneline"],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  // If no upstream or has unpushed commits
+  if (result.exitCode !== 0) return true; // no upstream = treat as unpushed
+  const out = new TextDecoder().decode(result.stdout).trim();
+  return out.length > 0;
+}
+
+export interface CleanupOptions {
+  dry?: boolean;
+}
+
+export async function cleanup(opts: CleanupOptions = {}) {
   const worktrees = scanWorktrees().filter(w => !w.isMain);
 
   if (worktrees.length === 0) {
@@ -33,6 +51,7 @@ export async function cleanup() {
   }
 
   const items = await getItems(getContext());
+  const orgDir = getOrgDir();
 
   const candidates: CleanupCandidate[] = [];
   const active: Worktree[] = [];
@@ -50,15 +69,16 @@ export async function cleanup() {
     });
 
     const boardStatus = match?.status || null;
+    const unpushed = hasUnpushedCommits(`${orgDir}/${wt.name}`);
 
     if (boardStatus === "Done") {
-      candidates.push({ worktree: wt, slug, reason: "Board item Done", boardMatch: match!.title, boardStatus });
-    } else if (!match && age >= 1) {
-      candidates.push({ worktree: wt, slug, reason: "No board match (orphan)", boardMatch: null, boardStatus: null });
+      candidates.push({ worktree: wt, slug, reason: "Board item Done", boardMatch: match!.title, boardStatus, unpushed });
+    } else if (!match && age >= ORPHAN_DAYS) {
+      candidates.push({ worktree: wt, slug, reason: "No board match (orphan)", boardMatch: null, boardStatus: null, unpushed });
     } else if (age >= STALE_DAYS && wt.dirty === 0) {
-      candidates.push({ worktree: wt, slug, reason: `No commits in ${age}d, clean`, boardMatch: match?.title || null, boardStatus });
+      candidates.push({ worktree: wt, slug, reason: `No commits in ${age}d, clean`, boardMatch: match?.title || null, boardStatus, unpushed });
     } else if (age >= STALE_DAYS * 2) {
-      candidates.push({ worktree: wt, slug, reason: `No commits in ${age}d`, boardMatch: match?.title || null, boardStatus });
+      candidates.push({ worktree: wt, slug, reason: `No commits in ${age}d`, boardMatch: match?.title || null, boardStatus, unpushed });
     } else {
       active.push(wt);
     }
@@ -75,6 +95,20 @@ export async function cleanup() {
         `  ${name.padEnd(50)}${wt.oracle.padEnd(12)}${wt.branch.padEnd(30)}${formatAge(wt.lastCommitDate).padEnd(16)}${wt.dirty || ""}`
       );
     }
+  }
+
+  if (opts.dry) {
+    if (candidates.length === 0) {
+      console.log("\n  [dry] No stale worktrees found.\n");
+    } else {
+      console.log(`\n  [dry] Would flag ${candidates.length} worktree(s) as stale.\n`);
+      for (const c of candidates) {
+        const warn = c.unpushed ? " [UNPUSHED]" : "";
+        console.log(`    ${c.worktree.name} — ${c.reason}${warn}`);
+      }
+      console.log();
+    }
+    return;
   }
 
   if (candidates.length === 0) {
@@ -103,6 +137,10 @@ export async function cleanup() {
   for (const c of candidates) {
     if (c.worktree.dirty > 0) {
       console.log(`  SKIP: ${c.worktree.name} (${c.worktree.dirty} dirty files)`);
+      continue;
+    }
+    if (c.unpushed) {
+      console.log(`  SKIP: ${c.worktree.name} (has unpushed commits)`);
       continue;
     }
     // Check if agent is alive in tmux

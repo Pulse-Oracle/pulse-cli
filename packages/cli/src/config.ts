@@ -19,6 +19,10 @@ export interface PulseConfig {
     oracleColor?: string;
     p0Color?: string;
   };
+  blog?: {
+    repo?: string;
+    category?: string;
+  };
 }
 
 // ─── Derived helpers ────────────────────────
