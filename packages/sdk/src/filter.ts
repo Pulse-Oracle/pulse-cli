@@ -1,6 +1,6 @@
 import type { ProjectItem } from "./types";
 
-/** Filter items by oracle, client, priority, or status (case-insensitive) */
+/** Filter items by oracle, client, priority, status, or repo (case-insensitive) */
 export function filterItems(items: ProjectItem[], filter: string): ProjectItem[] {
   const f = filter.toLowerCase();
   return items.filter(
@@ -8,7 +8,8 @@ export function filterItems(items: ProjectItem[], filter: string): ProjectItem[]
       (i.oracle || "").toLowerCase() === f ||
       (i.client || "").toLowerCase() === f ||
       (i.priority || "").toLowerCase() === f ||
-      (i.status || "").toLowerCase().replace(" ", "") === f.replace(" ", "")
+      (i.status || "").toLowerCase().replace(" ", "") === f.replace(" ", "") ||
+      (i.repo || "").toLowerCase() === f
   );
 }
 

@@ -12,6 +12,8 @@ export interface ProjectItem {
   oracle: string;
   "start date": string;
   "target date": string;
+  worktree: string;
+  repo: string;
 }
 
 export interface ProjectField {
@@ -19,4 +21,29 @@ export interface ProjectField {
   name: string;
   type: string;
   options?: { id: string; name: string }[];
+}
+
+export interface AddOpts {
+  body?: string;
+  oracle?: string;
+  repo?: string;
+  type?: string;
+  wt?: string;
+  worktree?: boolean;
+  priority?: string;
+}
+
+export interface EscalateOpts {
+  oracle?: string;
+  context?: string;
+}
+
+export interface SchedulerOpts {
+  post?: boolean;
+  days?: number;
+}
+
+export interface BlogOpts {
+  category?: string;
+  title?: string;
 }

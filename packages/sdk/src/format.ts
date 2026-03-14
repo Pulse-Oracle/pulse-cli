@@ -1,5 +1,54 @@
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+/**
+ * Estimate display width of a string.
+ * Thai combining marks (0E31, 0E34-0E3A, 0E47-0E4E) are zero-width.
+ * CJK/fullwidth chars are double-width. Everything else is 1.
+ */
+export function displayWidth(str: string): number {
+  let w = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)!;
+    // Thai combining vowels & tone marks
+    if (cp === 0x0E31 || (cp >= 0x0E34 && cp <= 0x0E3A) || (cp >= 0x0E47 && cp <= 0x0E4E)) continue;
+    // CJK / fullwidth
+    if ((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF) ||
+        (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+        (cp >= 0xFE10 && cp <= 0xFE6F) || (cp >= 0xFF01 && cp <= 0xFF60) ||
+        (cp >= 0x20000 && cp <= 0x2FA1F)) {
+      w += 2;
+    } else {
+      w += 1;
+    }
+  }
+  return w;
+}
+
+/** Pad string to target display width */
+export function padDisplay(str: string, width: number): string {
+  const dw = displayWidth(str);
+  return dw >= width ? str : str + " ".repeat(width - dw);
+}
+
+/** Slice string to fit within target display width */
+export function sliceDisplay(str: string, maxWidth: number): string {
+  let w = 0;
+  let i = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)!;
+    let cw = 1;
+    if (cp === 0x0E31 || (cp >= 0x0E34 && cp <= 0x0E3A) || (cp >= 0x0E47 && cp <= 0x0E4E)) cw = 0;
+    else if ((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF) ||
+        (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+        (cp >= 0xFE10 && cp <= 0xFE6F) || (cp >= 0xFF01 && cp <= 0xFF60) ||
+        (cp >= 0x20000 && cp <= 0x2FA1F)) cw = 2;
+    if (w + cw > maxWidth) break;
+    w += cw;
+    i += ch.length;
+  }
+  return str.slice(0, i);
+}
+
 /** Format date as "4 Mar" */
 export function fmtDate(dateStr: string): string {
   const dt = new Date(dateStr);

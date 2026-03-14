@@ -28,7 +28,7 @@ export async function graphql<T = any>(query: string): Promise<T> {
 
 export async function getItems(ctx: PulseContext): Promise<ProjectItem[]> {
   const data = await ghJson(
-    "project", "item-list", String(ctx.projectNumber), "--owner", ctx.org, "--format", "json"
+    "project", "item-list", String(ctx.projectNumber), "--owner", ctx.org, "--limit", "100", "--format", "json"
   );
   const items: ProjectItem[] = data.items;
 
@@ -42,11 +42,18 @@ export async function getItems(ctx: PulseContext): Promise<ProjectItem[]> {
         items(first: 100) {
           nodes {
             id
+            content {
+              ... on Issue { repository { name } }
+              ... on PullRequest { repository { name } }
+            }
             startDate: fieldValueByName(name: "Start Date") {
               ... on ProjectV2ItemFieldDateValue { date }
             }
             targetDate: fieldValueByName(name: "Target Date") {
               ... on ProjectV2ItemFieldDateValue { date }
+            }
+            worktree: fieldValueByName(name: "Worktree") {
+              ... on ProjectV2ItemFieldTextValue { text }
             }
           }
         }
@@ -54,19 +61,23 @@ export async function getItems(ctx: PulseContext): Promise<ProjectItem[]> {
     }
   }`);
 
-  const dateMap = new Map<string, { start: string; target: string }>();
+  const extraMap = new Map<string, { start: string; target: string; worktree: string; repo: string }>();
   for (const node of gqlResult.data.node.items.nodes) {
-    dateMap.set(node.id, {
+    extraMap.set(node.id, {
       start: node.startDate?.date || "",
       target: node.targetDate?.date || "",
+      worktree: node.worktree?.text || "",
+      repo: node.content?.repository?.name || "",
     });
   }
 
   for (const item of items) {
-    const dates = dateMap.get(item.id);
-    if (dates) {
-      item["start date"] = dates.start;
-      item["target date"] = dates.target;
+    const extra = extraMap.get(item.id);
+    if (extra) {
+      item["start date"] = extra.start;
+      item["target date"] = extra.target;
+      item.worktree = extra.worktree;
+      item.repo = extra.repo;
     }
   }
 
@@ -100,4 +111,59 @@ export async function getIssueTypes(ctx: PulseContext): Promise<{ id: string; na
 
 export async function setIssueType(issueNodeId: string, typeId: string) {
   await graphql(`mutation { updateIssue(input: { id: "${issueNodeId}", issueTypeId: "${typeId}" }) { issue { id } } }`);
+}
+
+// ─── Field setters ───────────────────────────────────
+
+export async function setTextField(ctx: PulseContext, itemId: string, fieldName: string, value: string) {
+  const projectId = await getProjectId(ctx);
+  const fields = await getFields(ctx);
+  const field = fields.find(f => f.name.toLowerCase() === fieldName.toLowerCase());
+  if (!field) {
+    console.error(`Field "${fieldName}" not found on project`);
+    return;
+  }
+  await graphql(`mutation {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: "${projectId}",
+      itemId: "${itemId}",
+      fieldId: "${field.id}",
+      value: { text: "${value.replace(/"/g, '\\"')}" }
+    }) { projectV2Item { id } }
+  }`);
+}
+
+export async function setFieldOnItem(ctx: PulseContext, itemId: string, fieldName: string, value: string): Promise<void> {
+  const fields = await getFields(ctx);
+  const projectId = await getProjectId(ctx);
+  const field = fields.find(f => f.name.toLowerCase() === fieldName.toLowerCase());
+  if (!field) {
+    console.error(`Field "${fieldName}" not found on project`);
+    return;
+  }
+
+  // TEXT field (no options)
+  if (!field.options) {
+    await graphql(`mutation {
+      updateProjectV2ItemFieldValue(input: {
+        projectId: "${projectId}",
+        itemId: "${itemId}",
+        fieldId: "${field.id}",
+        value: { text: "${value.replace(/"/g, '\\"')}" }
+      }) { projectV2Item { id } }
+    }`);
+    return;
+  }
+
+  // SingleSelect field
+  const opt = field.options.find(o => o.name.toLowerCase() === value.toLowerCase());
+  if (!opt) {
+    console.error(`Option "${value}" not found for field "${fieldName}"`);
+    return;
+  }
+  await gh(
+    "project", "item-edit", "--project-id", projectId,
+    "--id", itemId, "--field-id", field.id,
+    "--single-select-option-id", opt.id,
+  );
 }
