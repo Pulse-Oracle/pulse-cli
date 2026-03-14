@@ -1,4 +1,4 @@
-import { gh, getItems, getFields, getProjectId } from "@pulse-oracle/sdk";
+import { gh, getItems, getFields, getProjectId, graphql } from "@pulse-oracle/sdk";
 import { getContext } from "../config";
 
 export async function set(itemIndex: number, ...fieldValues: string[]) {
@@ -25,6 +25,26 @@ export async function set(itemIndex: number, ...fieldValues: string[]) {
       value = fv;
     }
 
+    // Try TEXT field first (requires field=value syntax)
+    if (fieldName) {
+      const textField = fields.find(
+        (f) => f.name.toLowerCase() === fieldName!.toLowerCase() && !f.options && f.type === "ProjectV2Field"
+      );
+      if (textField) {
+        await graphql(`mutation {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: "${projectId}",
+            itemId: "${item.id}",
+            fieldId: "${textField.id}",
+            value: { text: "${value.replace(/"/g, '\\"')}" }
+          }) { projectV2Item { id } }
+        }`);
+        console.log(`  ${textField.name} = ${value}`);
+        continue;
+      }
+    }
+
+    // Try SingleSelect fields
     for (const field of fields) {
       if (!field.options) continue;
       if (fieldName && field.name.toLowerCase() !== fieldName.toLowerCase()) continue;
