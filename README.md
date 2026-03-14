@@ -1,6 +1,9 @@
-# pulse-cli
+# Pulse CLI
 
-GH Projects Master Board CLI — manage GitHub Project issues, timelines, and boards from the terminal.
+Project heartbeat for the Oracle family — manage GitHub Projects V2 from the terminal.
+
+**Docs**: https://pulse.buildwithoracle.com
+**Board**: [Master Board](https://github.com/orgs/laris-co/projects/6)
 
 ## Requirements
 
@@ -10,55 +13,84 @@ GH Projects Master Board CLI — manage GitHub Project issues, timelines, and bo
 ## Quick Start
 
 ```bash
-git clone https://github.com/laris-co/pulse-cli
+git clone https://github.com/Pulse-Oracle/pulse-cli
 cd pulse-cli
-bun pulse.ts init
+bun install
+bun packages/cli/src/pulse.ts init
 ```
 
-`pulse init` will ask for your GitHub org/user and project number, then auto-discover repos.
+## Commands (22)
 
-## Commands
-
-```
-pulse board [filter]     Show Master Board (filter by oracle/client/priority)
-pulse timeline [filter]  ASCII timeline with colored bars
-pulse add <title>        Create Issue + add to board
-pulse set <#> <values>   Set fields on an item
-pulse field-add <f> <v>  Add option to a select field
-pulse clear <#> [field]  Clear date fields
-pulse scan               Discover untracked issues across repos
-pulse init               Setup pulse.config.json
-```
-
-## Options for `add`
+### Core — Task Management
 
 ```
---oracle <name>       Auto-resolve repo from config + add label
---repo <owner/repo>   Target repo (overrides oracle mapping)
---type <type>         Issue type: task, bug, feature
---body <text>         Issue body text
+pulse add <title>          Create Issue + add to board
+pulse start <title>        Create issue + set In Progress (track before you build)
+pulse close <#>            Mark as Done + close issue
+pulse set <#> <values>     Set fields (status, priority, client, oracle, dates)
+pulse remove <#>           Remove item from board
+pulse clear <#> [field]    Clear date fields
 ```
 
-## Examples
+### Board — Visibility
 
-```bash
-# View your board
-bun pulse.ts board
+```
+pulse board [filter]       Show Master Board (filter by oracle/client/priority)
+pulse timeline [filter]    ASCII Gantt chart with colored bars
+pulse triage               Show items missing priority/client/oracle
+pulse scan                 Discover untracked issues across repos
+```
 
-# Filter by team member
-bun pulse.ts board Neo
+### Fleet — Agent Management
 
-# ASCII Gantt chart
-bun pulse.ts timeline
+```
+pulse heartbeat [--fix]    Check agent health (ACTIVE/STALE/DEAD)
+pulse escalate <title>     P0 escalation — create issue + spawn agent
+pulse resume <#>           Wake paused agent + set In Progress
+pulse cleanup [--dry]      Remove stale worktrees across all Oracles
+pulse auto-assign          Route unassigned items to Oracles
+pulse sentry               Hourly agent map (posts to Discussion)
+```
 
-# Create issue on a specific repo
-bun pulse.ts add "Fix login bug" --oracle Backend --type bug
+### Ops — Setup & Maintenance
 
-# Set fields on item #3
-bun pulse.ts set 3 P0 Urgent
+```
+pulse init                 Setup pulse.config.json
+pulse field-add <f> <v>    Add option to select field (with backup/restore)
+pulse scheduler            Daily cron (standup + wrapup to Discussion)
+pulse blog <file.md>       Publish markdown to GitHub Discussion
+pulse backfill-wt          Match board items to worktrees
+```
 
-# Find issues not on the board
-bun pulse.ts scan
+## Flags
+
+```
+--oracle <name>       Target oracle (auto-resolves repo from config)
+--repo <owner/repo>   Target repo (overrides oracle)
+--priority P0-P3      Set priority level
+--client <name>       Set client
+--type task|bug|feature
+--worktree            Create new worktree + wake agent
+```
+
+## Architecture
+
+```
+Pulse-Oracle/pulse-cli/
+  packages/
+    sdk/              @pulse-oracle/sdk
+      src/
+        types.ts        Type definitions
+        github.ts       GitHub API (GraphQL, Projects V2)
+        format.ts       Display formatting (Thai-aware)
+        filter.ts       Item filtering + grouping
+        route.ts        Oracle routing logic
+        labels.ts       Label management
+        discussion.ts   Discussion API
+    cli/              @pulse-oracle/cli
+      src/
+        commands/       22 commands
+        pulse.ts        Entry point
 ```
 
 ## Config
@@ -70,39 +102,21 @@ bun pulse.ts scan
   "org": "your-org",
   "projectNumber": 1,
   "oracleRepos": {
-    "frontend": "frontend-repo",
-    "backend": "backend-api"
+    "neo": "neo-oracle",
+    "hermes": "hermes-oracle"
+  },
+  "routing": {
+    "repo": { "neo-oracle": "Neo" },
+    "keyword": [{ "match": ["code", "bug"], "oracle": "Neo" }],
+    "default": "Pulse"
   }
 }
-```
-
-The `oracleRepos` map lets `--oracle Frontend` auto-resolve to `your-org/frontend-repo`.
-
-## Architecture
-
-```
-pulse.ts              Entry point (arg parsing)
-lib/
-  config.ts           Config loader (pulse.config.json)
-  github.ts           gh/GraphQL helpers + data fetchers
-  types.ts            TypeScript interfaces
-  format.ts           Date formatting, color codes, bar calculations
-  filter.ts           Filter + group by priority
-  commands/
-    board.ts          Board table view
-    timeline.ts       ASCII Gantt chart
-    add.ts            Create issue + add to board
-    set.ts            Set fields on items
-    field-add.ts      Add select field options (with backup/restore)
-    clear.ts          Clear date fields
-    scan.ts           Discover untracked issues
-    init.ts           Interactive setup
 ```
 
 ## Tests
 
 ```bash
-bun test tests/
+bun test    # 28 tests (format: 16, filter: 12)
 ```
 
 ## License
