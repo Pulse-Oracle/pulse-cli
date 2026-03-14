@@ -1,6 +1,7 @@
 import { getItems } from "@pulse-oracle/sdk";
 import { getContext, getOrgDir } from "../config";
 import { scanWorktrees, extractSlug, type Worktree } from "../worktree";
+import { mawPeek } from "../maw";
 
 const STALE_DAYS = 7;
 
@@ -97,32 +98,35 @@ export async function cleanup() {
     }
   }
 
-  console.log(`\n  Cleaning up...\n`);
-  let removed = 0;
+  // Check for active tmux sessions before suggesting removal
+  const safe: CleanupCandidate[] = [];
   for (const c of candidates) {
     if (c.worktree.dirty > 0) {
-      console.log(`  SKIP: ${c.worktree.name} (${c.worktree.dirty} dirty files — stash or review first)`);
+      console.log(`  SKIP: ${c.worktree.name} (${c.worktree.dirty} dirty files)`);
       continue;
     }
-    const proc = Bun.spawn(
-      ["git", "-C", c.worktree.name.replace(/\.wt-.*/, ""), "worktree", "remove", c.worktree.name],
-      { stdout: "pipe", stderr: "pipe", cwd: getOrgDir() }
-    );
-    const err = await new Response(proc.stderr).text();
-    await proc.exited;
-    if (proc.exitCode === 0) {
-      const wtMatch = c.worktree.name.match(/\.wt-(\d+)-?(.*)$/);
-      if (wtMatch) {
-        const oracleLower = c.worktree.oracle.toLowerCase();
-        const windowName = `${oracleLower}-${wtMatch[1]}-${wtMatch[2]}`.replace(/-$/, "");
-        const maw = Bun.spawn(["maw", "done", windowName], { stdout: "pipe", stderr: "pipe" });
-        await maw.exited;
+    // Check if agent is alive in tmux
+    const wtMatch = c.worktree.name.match(/\.wt-(\d+)-?(.*)$/);
+    if (wtMatch) {
+      const oracleLower = c.worktree.oracle.toLowerCase();
+      const windowName = `${oracleLower}-${wtMatch[1]}-${wtMatch[2]}`.replace(/-$/, "");
+      const peek = await mawPeek(windowName);
+      if (peek.alive) {
+        console.log(`  SKIP: ${c.worktree.name} (tmux session "${windowName}" is ALIVE)`);
+        continue;
       }
-      console.log(`  Removed: ${c.worktree.name}`);
-      removed++;
-    } else {
-      console.log(`  FAILED: ${c.worktree.name} — ${err.trim()}`);
     }
+    safe.push(c);
   }
-  console.log(`\n  ${removed} removed, ${candidates.length - removed} skipped.\n`);
+
+  if (safe.length === 0) {
+    console.log("\n  Nothing safe to remove.\n");
+    return;
+  }
+
+  console.log(`\n  ACTION REQUIRED: ${safe.length} worktree(s) can be removed:\n`);
+  for (const c of safe) {
+    console.log(`    maw done ${c.worktree.name.replace(/^.*\.wt-(\d+)-?(.*)$/, (_, n, s) => `${c.worktree.oracle.toLowerCase()}-${n}-${s}`).replace(/-$/, "")}`);
+  }
+  console.log();
 }
